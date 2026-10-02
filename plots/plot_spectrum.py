@@ -9,35 +9,10 @@ import matplotlib.pyplot as plt
 from tueplots import bundles
 
 from cavi.priors import HyperParameters, sample_theta, sample_z_and_j
-from cavi.generative import generative_model
+from cavi.generative import default_hyperparameters, generative_model
 
 
-def build_params() -> HyperParameters:
-    K, G = 4, 5
-    c_grid = jnp.array([30, 40, 50, 60, 70], dtype=jnp.int32)
-
-    # carbon-count prior per feature, peaked near a different grid slot each
-    n_probs = jnp.eye(K, G) * 0.6 + jnp.full((K, G), 0.4 / G)
-    n_probs = n_probs / n_probs.sum(axis=-1, keepdims=True)
-
-    alpha = jnp.full((K + 1,), 2.0)
-    alpha = alpha.at[0].set(2000.)
-    return HyperParameters(
-        alpha=alpha,
-        m_0=jnp.array([10.0, 25.0, 40.0, 55.0]),
-        nu_0=jnp.full((K,), 5.0),
-        a_0=jnp.full((K,), 4.0),
-        b_0=jnp.full((K,), 3.0),
-        m_hat=jnp.array([600.0, 750.0, 900.0, 1050.0]),
-        tau=jnp.full((K,), 0.05),
-        rho=jnp.tile(jnp.array([0.1, 0.6, 0.2, 0.1]), (K, 1)),
-        n=n_probs,
-        c_grid=c_grid,
-        a_p=jnp.array(1.07),  # natural 13C abundance ~1.07%
-        b_p=jnp.array(98.93),
-        a_s=jnp.array(5.0),
-        b_s=jnp.array(0.01),
-    )
+build_params = default_hyperparameters
 
 
 def main() -> None:

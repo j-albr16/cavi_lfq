@@ -6,7 +6,7 @@ from typing import NamedTuple
 import jax.random as jr
 
 CHARGES = jnp.array([1, 2, 3, 4], dtype=jnp.int32)  # doc: c_k in {1, 2, 3, 4}
-DELTA = 1.0
+DELTA = 1.00336  # mass difference 13C - 12C in Da
 
 
 class HyperParameters(NamedTuple):

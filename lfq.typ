@@ -544,34 +544,64 @@ $
   caption: [Variational factors and their parameters.],
 )
 
-+ *Initialize* the global factors from a peak picker: $tilde(mu)_k$, $tilde(m)_(k c)$ and $q(c_k)$ from the
-  candidates, all other factors from their priors.
-+ *Repeat until the ELBO converges:*
-  + update $q(z, j)$ (responsibilities);
-  + update $q(pi)$ and $q(mu_k, sigma_k^2)$;
-  + update $q(m_k, c_k)$ and $q(s^2)$, iterating the pair a few times;
-  + update $q(n_k)$ and $q(p)$, iterating the pair a few times;
-  + compute the ELBO and check that it has not decreased.
+#import "@preview/algorithmic:1.0.7"
+#import algorithmic: style-algorithm, algorithm-figure
+#show: style-algorithm
+#algorithm-figure(
+  "CAVI from random features",
+  vstroke: .5pt + luma(200),
+  {
+    import algorithmic: *
+    Procedure(
+      "CAVI",
+      ("pixels", "K", "J", "I"),
+      {
+        Assign[$w_n$][$I_n slash min_m I_m$]
+        For(
+          $k = 1, dots, K$,
+          {
+            Assign[$(m_(0 k), hat(m)_k)$][$(t_n, y_n)$ of a pixel $n tilde w$, with $y_n in [300, 2000]$]
+            Assign[$c_k$][$tilde (0.1, 0.5, 0.3, 0.1)$]
+          },
+        )
+        Assign[$q$][$p(theta)$]
+        LineBreak
+        For(
+          $i = 1, dots, I$,
+          {
+            Assign[$r_(n k j), r_(n 0)$][softmax over $(k, j)$ and background of $log rho$]
+            Assign[$N_k, N_0$][$sum_n w_n sum_j r_(n k j), thin sum_n w_n r_(n 0)$]
+            Assign[$q(pi)$][$"Dir"(alpha + (N_0, dots, N_K))$]
+            Assign[$q(mu_k, sigma_k^2)$][NIG update]
+            Assign[$q(m_k | c_k = c)$][Gaussian update #h(0.4em) $q(c_k)$ #sym.arrow.l softmax of $ell_c$]
+            Assign[$q(s^2)$][inverse-gamma update]
+            Assign[$q(n_k)$][grid update #h(0.4em) $q(p)$ #sym.arrow.l Beta update]
+            Assign[$cal(L)_i$][ELBO of $(r, q)$]
+          },
+        )
+        Return[$q$, $(cal(L)_i)_i$]
+      },
+    )
+  }
+)
+
+#figure(
+  btable(
+    columns: (auto, 1fr),
+    header: ([Prior], [Value]),
+    [position $(m_(0 k), hat(m)_k)$], [pixel drawn with probability $prop w_n$ (uniform over the window: `--init uniform`)],
+    [charge], [$c_k tilde (0.1, 0.5, 0.3, 0.1)$ (centres the averagine $p(n_k)$); the prior over $c$ is the same for all $k$],
+    [$tau_k$, $nu_(0 k)$, $EE[sigma_k^2]$], [$0.1$ Da, $0.1$, $(0.5 "min")^2$],
+    [$EE[s^2]$, $alpha_k$, $K$], [$(0.05 "Da")^2$ (learned), $1$, $30$],
+  ),
+  caption: [Random start (`random_hyperparameters`).],
+)
 
 #remark(title: "Efficiency")[
   Only pixels inside a feature's bounding box ($kappa approx 5$ widths around the apex and each comb tooth) get
   non-zero responsibilities for that feature. Pixels outside all boxes are pure background and only contribute
   their total weight to $tilde(alpha)_0$. Recompute the boxes every few iterations, not within a sweep.
 ]
-
-// ============================================================
-= ELBO
-// ============================================================
-
-#remark(title: "To do")[
-  Derive the ELBO for monitoring convergence. A convenient form is
-  $
-    cal(L) &= EE_q [log p(x,z|theta)] - sum_i D_"KL"(q(theta_i) || p(theta_i)) \
-    &= sum_n sum_k r_(n k) (log rho_(n k) - log r_(n k)) - sum_i D_"KL"(q(theta_i) || p(theta_i)) \
-  $
-]
-
-= Algorithm
 
 #remark(title: "Remark")[
    The core issue is that almost all ions will belong to the background so $z_n = 0$. We do not want to calculate CAVI updates for each of those update steps. So we do not want to consider each component $k$ for each isotope but only a fixed number of components $k_"eff"$ so 
@@ -583,41 +613,105 @@ $
   We can achieve that, via selecting a number of potential candidates first fitting those and then fitting the rest of not easy to fit features.
 ]
 
-#import "@preview/algorithmic:1.0.7"
-#import algorithmic: style-algorithm, algorithm-figure
-#show: style-algorithm
-#algorithm-figure(
-  "Binary Search",
-  vstroke: .5pt + luma(200),
-  {
-    import algorithmic: *
-    Procedure(
-      "Binary-Search",
-      ("A", "n", "v"),
-      {
-        Comment[Initialize the search range]
-        Assign[$l$][$1$]
-        Assign[$r$][$n$]
-        LineBreak
-        While(
-          $l <= r$,
-          {
-            Assign([mid], FnInline[floor][$(l + r) / 2$])
-            IfElseChain(
-              $A ["mid"] < v$,
-              {
-                Assign[$l$][$"mid" + 1$]
-              },
-              [$A ["mid"] > v$],
-              {
-                Assign[$r$][$"mid" - 1$]
-              },
-              Return[mid],
-            )
-          },
-        )
-        Return[*null*]
-      },
-    )
-  }
+// ============================================================
+= ELBO
+// ============================================================
+
+$
+  cal(L) = & sum_n w_n [sum_(k, j) r_(n k j)(log rho_(n k j) - log r_(n k j)) + r_(n 0)(log rho_(n 0) - log r_(n 0))] \
+  & - D_"KL"(q(pi) || p(pi)) - D_"KL"(q(p) || p(p)) - D_"KL"(q(s^2) || p(s^2)) \
+  & - sum_k [D_"KL"(q(mu_k, sigma_k^2) || p) + D_"KL"(q(m_k, c_k) || p) + D_"KL"(q(n_k) || p)]
+$
+
+#figure(
+  btable(
+    columns: (auto, 1fr),
+    header: ([Factor], [KL divergence to the prior (`elbo.py`)]),
+    $pi$, [Dirichlet: $log Gamma(sum tilde(alpha)) - sum log Gamma(tilde(alpha)_k) - dots + sum (tilde(alpha)_k - alpha_k)(psi(tilde(alpha)_k) - psi(sum tilde(alpha)))$],
+    $(mu_k, sigma_k^2)$, [$D_"KL"("IG" || "IG") + 1/2 [log (tilde(nu)_k slash nu_(0 k)) + nu_(0 k) slash tilde(nu)_k - 1 + nu_(0 k) (tilde(mu)_k - m_(0 k))^2 tilde(a)_k slash tilde(b)_k]$],
+    $(m_k, c_k)$, [$D_"KL"("Cat"(q(c_k)) || "Cat"(rho_k)) + sum_c q(c_k = c) D_"KL"(cal(N)(tilde(m)_(k c), tilde(tau)_k^2) || cal(N)(hat(m)_k, tau_k^2))$],
+    $n_k$, [categorical on the grid],
+    $p$, [Beta],
+    $s^2$, [inverse-gamma (the gamma KL with shape $a$, rate $b$)],
+  ),
+  caption: [KL terms. $log rho$ is taken at the current $q$; each update raises $cal(L)$.],
 )
+
+// ============================================================
+= Plots and results
+// ============================================================
+
+`make algorithm` (`plots/plot_cavi.py`) runs the algorithm on a spectrum and writes the plots below to `plots/cavi_real`.
+Colours identify components in all panels (@fig-metrics, last page); only the $12$ components with most ions at the end are drawn. A component
+counts as supported if $N_k = tilde(alpha)_k - alpha_k > 30$.
+
+#figure(
+  btable(
+    columns: (auto, auto, 1fr),
+    header: ([Plot], [Panel], [Meaning]),
+    [`elbo.png`], [$cal(L)$ per sweep], [lower bound on the log evidence; flattening means converged],
+    [], [$|Delta cal(L)|$, log], [size of each step; crosses mark decreases (`float32` noise)],
+    [`metrics.png`], [1 expected ions $N_k$], [weighted number of pixels assigned to a component; dashed: support threshold],
+    [], [2 supported components], [left: how many of the $K$ the data use; right: share of all ions explained by features, not background],
+    [], [3 RT apex $mu_k$], [posterior mean elution apex and $plus.minus 2$ sd; dotted: reference RT of a matched component],
+    [], [4 mass minus final], [convergence of $tilde(m)_(k c)$ (zero at the end by construction, not an accuracy); band: $plus.minus 2 tilde(tau)_k$],
+    [], [5 peak width], [$sqrt(b_s slash (a_s - 1))$, one value for all; how close in m/z a pixel must be to a component],
+    [], [6 #super[13]C probability $p$], [with $90 %$ interval; near $0.011$ the isotope teeth are explained by the comb, near $0$ by components of their own],
+    [], [7 final $q(c_k)$], [charge posterior per component; a row equal to the prior is uninformed; crosses: reference charge],
+    [], [8 final $q(n_k)$], [carbon-count posterior ($n approx 0.044 dot m dot c$); width: uncertainty; informative only where the comb is used],
+    [`intensity.png`], [left], [fitted against reference intensity of each feature, log axes; dashed $y = x$, solid median ratio, dotted ceiling; colour: components per feature; title: Pearson (log), Spearman],
+    [], [right], [the same as a ratio per feature, components above the bars, "none": no component],
+    [`fit_full.mp4`], [top], [actual map, fitted expected map (posterior mean), posterior std of the expected counts; one frame per sweep, frame $0$ is the random start],
+    [], [bottom], [projections on m/z and RT: actual (grey) against fitted (colour: std)],
+    [`fit_component<k>.mp4`], [], [the same, zoomed on the component with most ions],
+    [`..._3d.mp4`], [], [surface: fitted mean, colour: std, wireframe: actual counts],
+  ),
+  caption: [The plots of `plot_cavi.py`.],
+)
+
+*Fitted map.* With $W = sum_n w_n$, $P_(k j) = sum_n q(n_k = n) "Binom"(j | n, p)$, $mu_(k c j) = m_(k c) + j Delta slash c$,
+the expected ions in the bin $[t_a, t_b] times [y_a, y_b]$ are
+$
+  W (pi_0 (Delta t Delta y) / (T Y) + sum_k pi_k thin A_k sum_j P_(k j) sum_c q(c_k = c) thin B_(k c j))
+$
+$
+  A_k = Phi((t_b - mu_k) / sigma_k) - Phi((t_a - mu_k) / sigma_k), quad
+  B_(k c j) = Phi((y_b - mu_(k c j)) / s) - Phi((y_a - mu_(k c j)) / s).
+$
+The std is taken over $12$ parameter draws from $q$ ($q(c)$, $q(n)$ marginalised): the uncertainty of the model, not the noise.
+
+*Intensity.* The intensity of a reference feature is $min I$ times the expected ions of all components whose mass lies
+on one of its isotope positions $m + j Delta slash c$ ($j < J$, reference charge) with RT within $1$ min (`cavi/evaluate.py`).
+The ceiling is (file intensity) / (sum of reference intensities): the reference is a model estimate and can exceed the
+pixel sum.
+
+
+#figure(
+  image("plots/cavi_real/intensity.png", width: 100%),
+  caption: [`intensity.png`: fitted against reference intensity.],
+) <fig-intensity>
+
+#figure(
+  btable(
+    columns: (auto, auto, auto),
+    header: ([Setting (OpenMS example map)], [reference features matched], [supported components]),
+    [$K = 20$ / $30$ / $40$, six seeds], [$4.5$ / $5.5$ / $6.0$ of $8$], [$18$--$20$ / $26$--$29$ / $35$--$38$],
+    [$K = 100$ / $200$], [$8$ / $8$], [-- / $131$],
+    [intensity, $K = 30$], [Pearson (log) $0.84$--$0.97$], [fitted $0.32$--$0.49$ times the reference (ceiling $0.82$)],
+    [uniform instead of pixel start], [$0$--$1$ of $8$], [broad width stays at $0.3$ Da],
+  ),
+  caption: [Results. Matched: a supported component at the monoisotopic mass and RT of a reference feature.],
+)
+
+#remark(title: "Limitations")[
+  - *The comb is not used:* $p approx 2 dot 10^(-6)$ and $max_c q(c_k) = 0.50$ (the prior) for every seed and every $K$; each isotope tooth becomes a component.
+  - *Few components cannot prune, many fragment:* $K = 200$ has $83$ of its $131$ supported components on isotope teeth; $alpha_k < 1$ does not help (it only acts on components with about one ion).
+  - *Weights are not counts on real data:* the posterior is probably overconfident.
+]
+
+#page(flipped: true, margin: (x: 1.5cm, y: 1.8cm))[
+  #figure(
+    image("plots/cavi_real/metrics.png", width: 100%),
+    caption: [`metrics.png`: posterior summaries over the sweeps (sweep $0$ is the random start).],
+  ) <fig-metrics>
+]

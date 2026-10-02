@@ -70,7 +70,7 @@ def m_z_signal(
     )
 
 
-def get_log_rho_0(params: VariationalParams, T: int, Y: int) -> Float[Array, ""]:
+def get_log_rho_0(params: VariationalParams, T: Float[Array, ""], Y: Float[Array, ""]) -> Float[Array, ""]:
     return digamma(params.alpha[0]) - digamma(jnp.sum(params.alpha)) - jnp.log(T * Y)
 
 
@@ -96,8 +96,8 @@ def get_log_rho_all(
     y: Float[Array, "N"],
     t: Float[Array, "N"],
     num_j: int,
-    T: int,
-    Y: int,
+    T: Float[Array, ""],
+    Y: Float[Array, ""],
 ) -> tuple[Float[Array, "N K J"], Float[Array, ""]]:
     k = jnp.arange(1, params.m.shape[0] + 1)  # 0 is the background
     j = jnp.arange(num_j)
@@ -105,7 +105,7 @@ def get_log_rho_all(
     log_rho_j = jax.vmap(get_log_rho, in_axes=(None, None, None, None, None, 0))
     log_rho_jk = jax.vmap(log_rho_j, in_axes=(None, None, None, None, 0, None))
     log_rho_jkn = jax.vmap(log_rho_jk, in_axes=(None, None, 0, 0, None, None))
-    log_rho = log_rho_jkn(params, h_params, y, t, k, j)
+    log_rho = log_rho_jkn(params, h_params, t, y, k, j)
     log_rho_0 = get_log_rho_0(params, T, Y)
     return log_rho, log_rho_0
 
@@ -116,8 +116,8 @@ def get_r(
     y: Float[Array, "N"],
     t: Float[Array, "N"],
     num_j: int,
-    T: int,
-    Y: int,
+    T: Float[Array, ""],
+    Y: Float[Array, ""],
 ) -> tuple[Float[Array, "N K J"], Float[Array, "N"]]:
     log_rho, log_rho_0 = get_log_rho_all(params, h_params, y, t, num_j, T, Y)
 
